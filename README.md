@@ -39,7 +39,19 @@
 <!-- The path a submission takes, from arriving to the label a reader sees.
      Six or seven steps — this is the trace you wrote in Milestone 1. -->
 
+1. **Step 1** - The /submit endpoint receives the request or writing which is a JSON with text and creator_id.
 
+2. **Step 2** - Validity check happens here so that if text is missing, empty, not text, too short or too long, it rejects the request here by sending back an error rather than letting bad input reach the signals. If validity passes, the text gets a content_id. The content_id adds the identity that /appeal will use later to find the item. A missing creator_id is also rejected, and every rejection is logged.
+
+3. **Step 3** - The model / meaning signal (detector.py) measures how predictable the text is to a language model and adds a model_score (a number from 0-to-1).
+
+4. **Step 4** - The style signal (stylometry.py) measures the text as text by looking at the sentence-length spread, word variety and punctuation, and adds a style_score (a number from 0-to-1 for how AI-like the style looks, higher means more AI-like).
+
+5. **Step 5** - The combiner (scoring.py::combine_signals) merges the two numbers thereby adding combined_score. It applies my weights and adds a single score. The confidence is calculated in the route (how far the score is from 0.5).
+
+6. **Step 6** - This is the label mapping (scoring.py::score_to_label) step where the result is mapped to one of three written variants (high-confidence AI, high-confidence human, and unsure). It adds the plain-language message a non-technical reader will see, and the score ranges must leave no gaps, so every reachable score lands in exactly one variant.
+
+7. **Step 7** - At this stage, the JSON carries content_id, model_score, style_score, the guess, the confidence, and the label text. The record is appended and saved as a permanent record to logs/audit.jsonl, then it sends the answer back to the writer. A later appeal will have something to point at since it is added as a new entry beside the original, which stays untouched.
 
 ---
 
