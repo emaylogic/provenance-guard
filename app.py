@@ -30,6 +30,9 @@ from flask import Flask, jsonify, request
 
 import audit
 import config
+import detector
+import scoring
+import stylometry
 
 app = Flask(__name__)
 
@@ -150,6 +153,18 @@ def health():
 
 # ── YOU BUILD THIS ────────────────────────────────────────────────────────────
 
+def _reject(creator_id, reason, message, status=400, **extra):
+    """
+    Refuse a request with a clear message, and leave a trace in the audit log.
+
+    An attack that shows up only as an absence is one you'll never find, so a
+    refused request is logged just like a decided one.
+    """
+    audit.log_rejection(creator_id=creator_id, reason=reason,
+                        route=request.path, **extra)
+    return jsonify({"error": reason, "message": message}), status
+
+
 @app.post("/submit")
 # @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
 def submit():
@@ -199,17 +214,80 @@ def submit():
     what should this do when `text` is missing, empty, or enormous? A crash on
     a malformed input is one of the most common real failures there is.
     """
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
 
-    # TODO: delete this and build the route.
+    # ── 1. Is this request usable at all? ────────────────────────────────────
+    # Every refusal is a 4xx with a plain message — never a 500 — and every
+    # one is logged.
+    if not isinstance(payload, dict):
+        return _reject(
+            "unknown", "body_not_a_json_object",
+            'Send a JSON object like {"text": "...", "creator_id": "..."}.',
+        )
+
+    creator_id = payload.get("creator_id")
+    if not isinstance(creator_id, str) or not creator_id.strip():
+        return _reject("unknown", "missing_creator_id",
+                       "creator_id is missing or blank.")
+    creator_id = creator_id.strip()
+
+    text = payload.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return _reject(creator_id, "missing_text",
+                       "text is missing, empty, or not a string.")
+
+    if len(text) > config.MAX_TEXT_CHARS:
+        return _reject(
+            creator_id, "text_too_long",
+            f"text is {len(text)} characters; the limit is {config.MAX_TEXT_CHARS}.",
+            status=413, text_length=len(text),
+        )
+
+    content_id = str(uuid.uuid4())
+
+    # ── 2. The two signals ───────────────────────────────────────────────────
+    try:
+        model_score = detector.model_signal(text)
+    except ValueError:
+        # detector.perplexity raises this when there are too few tokens.
+        return _reject(creator_id, "text_too_short",
+                       "text is too short to score — send a few sentences at least.")
+    except detector.DetectorUnavailable:
+        return _reject(creator_id, "detector_unavailable",
+                       "The detector model isn't loaded. Run `python detector.py` once.",
+                       status=503)
+
+    style_score = stylometry.style_signal(text)
+
+    # ── 3. Combine, then turn the number into words ──────────────────────────
+    combined_score = round(scoring.combine_signals(model_score, style_score), 4)
+    guess, label = scoring.score_to_label(combined_score)
+
+    # How far the score sits from a coin flip: 0.0 at 0.5, 1.0 at either end.
+    confidence = round(abs(combined_score - 0.5) * 2, 4)
+
+    # ── 4. Record it, then answer ────────────────────────────────────────────
+    audit.log_decision(
+        content_id=content_id,
+        creator_id=creator_id,
+        guess=guess,
+        model_score=model_score,
+        style_score=style_score,
+        combined_score=combined_score,
+        label=label,
+        status="decided",
+        confidence=confidence,
+    )
+
     return jsonify({
-        "error": "not_implemented",
-        "message": "POST /submit isn't built yet — see the TODO in app.py.",
-        "you_sent": {
-            "text_length": len(payload.get("text", "")),
-            "creator_id": payload.get("creator_id"),
-        },
-    }), 501
+        "content_id": content_id,
+        "guess": guess,
+        "confidence": confidence,
+        "label": label,
+        "model_score": model_score,
+        "style_score": style_score,
+        "combined_score": combined_score,
+    }), 200
 
 
 @app.post("/appeal")
@@ -232,14 +310,47 @@ def appeal():
     to the person on the other end. It's the only thing standing between a
     wrong accusation and nothing at all.
     """
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
 
-    # TODO: delete this and build the route.
+    if not isinstance(payload, dict):
+        return _reject(
+            "unknown", "body_not_a_json_object",
+            'Send a JSON object like {"content_id": "...", "reasoning": "..."}.',
+        )
+
+    content_id = payload.get("content_id")
+    if not isinstance(content_id, str) or not content_id.strip():
+        return _reject("unknown", "missing_content_id",
+                       "content_id is missing or blank.")
+    content_id = content_id.strip()
+
+    reasoning = payload.get("reasoning")
+    if not isinstance(reasoning, str) or not reasoning.strip():
+        return _reject("unknown", "missing_reasoning",
+                       "Please tell us why you think the result is wrong.")
+
+    # Only real decisions count — not earlier appeals or rejections.
+    decisions = [e for e in audit.entries_for(content_id) if "event" not in e]
+    if not decisions:
+        return _reject(
+            "unknown", "unknown_content_id",
+            "We couldn't find a submission with that content_id. "
+            "Check it was copied exactly.",
+            status=404, appealed_content_id=content_id,
+        )
+
+    entry = audit.log_appeal(content_id, decisions[0]["creator_id"], reasoning.strip())
+
     return jsonify({
-        "error": "not_implemented",
-        "message": "POST /appeal isn't built yet — see the TODO in app.py.",
-        "you_sent": payload,
-    }), 501
+        "content_id": content_id,
+        "status": "under_review",
+        "message": (
+            "Thanks — your appeal is recorded and a person will review this "
+            "result. Your original result and your explanation are both kept "
+            "on record."
+        ),
+        "appealed_at": entry["timestamp"],
+    }), 200
 
 
 # ── Already works ─────────────────────────────────────────────────────────────

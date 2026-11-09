@@ -47,6 +47,14 @@ DETECTOR_MODEL = os.getenv("AI201_DETECTOR_MODEL", "gpt2")
 DETECTOR_MAX_TOKENS = 400
 
 
+# ─── Input limits ────────────────────────────────────────────────────────────
+# The longest text /submit will accept. The model only reads the first
+# DETECTOR_MAX_TOKENS anyway; this stops an enormous body from tying up the
+# style signal. 20,000 characters is roughly 3,500 words — longer than any one
+# piece a writer would reasonably submit.
+MAX_TEXT_CHARS = 20_000
+
+
 # ─── Scoring (Milestone 4) ───────────────────────────────────────────────────
 # How much each signal counts toward the combined score.
 #
@@ -54,8 +62,15 @@ DETECTOR_MAX_TOKENS = 400
 # down BEFORE you code it, and to put the numbers in your README. Whatever you
 # decide, it goes here.
 
-WEIGHT_MODEL_SIGNAL = 0.5
-WEIGHT_STYLE_SIGNAL = 0.5
+WEIGHT_MODEL_SIGNAL = 0.6
+WEIGHT_STYLE_SIGNAL = 0.4
+
+# When the two signals disagree by more than this, the combined score is
+# capped at DISAGREEMENT_CAP — inside the unsure band, below AI_THRESHOLD.
+# Two methods disagreeing is uncertainty, and uncertainty should never turn
+# into an accusation.
+DISAGREEMENT_GAP = 0.4
+DISAGREEMENT_CAP = 0.6
 
 
 # ─── Thresholds (Milestone 5) ────────────────────────────────────────────────
