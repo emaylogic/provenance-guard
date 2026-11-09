@@ -52,11 +52,19 @@ def combine_signals(model_score: float, style_score: float) -> float:
     The weights in config.py are placeholders. Change them, or ignore them and
     write a different rule.
     """
-    # TODO: replace this
-    return (
+    # 1. Weighted average. The model signal counts for more because the style
+    #    signal is cheap to fake: typos and chopped-up sentences move it.
+    score = (
         config.WEIGHT_MODEL_SIGNAL * model_score
         + config.WEIGHT_STYLE_SIGNAL * style_score
     )
+
+    # 2. When the signals disagree sharply, cap the score inside the unsure
+    #    band. Disagreement can make a result "unsure", never "AI".
+    if abs(model_score - style_score) > config.DISAGREEMENT_GAP:
+        score = min(score, config.DISAGREEMENT_CAP)
+
+    return round(min(max(score, 0.0), 1.0), 4)
 
 
 def score_to_label(score: float) -> tuple[str, str]:
@@ -85,12 +93,23 @@ def score_to_label(score: float) -> tuple[str, str]:
     think if they got it on their own work. That question is the whole
     milestone.
     """
-    # TODO: replace this — thresholds are in config.py
+    # Thresholds are in config.py. The bands meet with no gap: anything that
+    # isn't clearly AI or clearly human is unsure.
     if score >= config.AI_THRESHOLD:
-        return "ai", "PLACEHOLDER — write the high-confidence AI label."
+        return "ai", (
+            "This piece looks like it has been AI-generated to us. If you "
+            "disagree, you can appeal and a person will review it."
+        )
     if score <= config.HUMAN_THRESHOLD:
-        return "human", "PLACEHOLDER — write the high-confidence human label."
-    return "unsure", "PLACEHOLDER — write the unsure label."
+        return "human", (
+            "This piece sounds more like it was written by a real human being."
+        )
+    return "unsure", (
+        "This piece is hard to decipher whether it was written by a real human "
+        "being or whether it was AI-generated. This is not an accusation; lots "
+        "of writing by real human beings falls here. You are free to ask for "
+        "someone to take a look and provide an opinion."
+    )
 
 
 def label_ranges() -> list[tuple[str, str]]:
