@@ -44,60 +44,56 @@ Two things worth knowing before you pick numbers:
 ---
 ## 1.
 
-<!-- Your criterion. It must name a number. -->
-
-
+Of 10 paragraphs I wrote myself, at most 1 gets labelled high-confidence AI.
 
 **Why this target:**
 
+When writing, I sometimes adopt em dashes for emphasis or to insert extra information when I do not necessarily want to use a comma, or a comma might not let the sentence flow the way I want.
+Many people think em dashes are a sign of AI writing, so I could easily be wrongly accused, and being told my own work isn't mine would feel very annoying and could cause very hard feelings. I allow 1 instead of 0 because no detector is perfect and there has to be allowance for some margin of error.
 
 
 ---
 
 ## 2.
 
-<!-- Your criterion. -->
-
-
+Across my test texts (clearly AI, clearly human, borderline), each of the three labels appears at least once.
 
 **Why this target:**
 
+If a particular label can never appear, for example, if "clearly human" would never appear, an exceptional writer would question their abilities and probably seek out a different service with similar usage to compare results. This service would be deemed faulty and would get bad reviews and would end up getting discarded which is not good for a product.
 
 
 ---
 
 ## 3.
 
-<!-- Your criterion. -->
-
-
+Of 10 broken requests (empty text, missing text, null, wrong type, huge text), 0 cause a crash (500 error).
 
 **Why this target:**
 
+For whatever input submitted, the service should never crash as this shuts down the service for everyone by becoming unavailable. Every imaginable input outlier should be handled / sanitized and a meaningful error returned to the user, so it can be corrected. Unexpected outliers should also be handled so that an error message is returned to the user instead of the system going down.
 
 
 ---
 
 ## 4.
 
-<!-- Your criterion. -->
-
-
+Every appeal on a real content_id changes the status to under_review and adds a log entry. Every appeal on a made-up ID gets a 404.
 
 **Why this target:**
 
+For any writer that disagrees with the label assigned to their text, an appeal is the writer's record that they disputed the label. If there is no record of an appeal, then there is no way to contest the wrongly assigned label. A 404 on a made-up ID is an alert to the writer that there has been no recorded appeal. So the writer can check the ID and try again in case of some sort of error.
 
 
 ---
 
 ## 5.
 
-<!-- Your criterion. -->
-
-
+Clearly AI text scores at least 0.65 (the AI label) and clearly human text scores at most 0.35 (the human label).
 
 **Why this target:**
 
+When AI and human text score a noticeable gap apart, there is more confidence in the labeling system and not just a lucky coin toss.
 
 
 ---
